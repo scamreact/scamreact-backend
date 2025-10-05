@@ -1,6 +1,7 @@
 const express = require("express");
 const Anthropic = require("@anthropic-ai/sdk");
 const axios = require("axios");
+const { getDB } = require("../connection/db.js");
 const router = express.Router();
 
 // Inizializzazione Anthropic
@@ -32,11 +33,12 @@ router.post("/nonna", async (req, res) => {
       });
     }
 
-    // 1. Recupera dati dal database (con cache)
-    const borgoData = await getCachedBorgoData(context);
+    const userLastMessage = messages[messages.length - 1].content;
+
+    // 1. Recupera dati dal database (con cache e supporto località dinamica)
+    const borgoData = await getCachedBorgoData(context, userLastMessage);
 
     // 2. Analizza se serve ricerca web
-    const userLastMessage = messages[messages.length - 1].content;
     const needsWebSearch = analyzeNeedsWebSearch(userLastMessage);
 
     // 3. Eventuale ricerca web
@@ -100,11 +102,25 @@ router.post("/nonna", async (req, res) => {
   }
 });
 
-// SISTEMA DI CACHE
-async function getCachedBorgoData(context) {
+// ====================================
+// SISTEMA DI CACHE CON SUPPORTO LOCALITÀ DINAMICA
+// ====================================
+async function getCachedBorgoData(context, userMessage = null) {
+  // Se c'è una richiesta meteo specifica, non usare cache
+  const requestedLocation = userMessage
+    ? extractLocationFromMessage(userMessage)
+    : null;
+
+  if (requestedLocation) {
+    console.log(
+      `🔄 Richiesta meteo per località specifica: ${requestedLocation}`
+    );
+    return await getBorgoData(context, requestedLocation);
+  }
+
+  // Altrimenti usa cache normale
   const cacheKey = `borgo_data_${new Date().toDateString()}`;
 
-  // Controlla se i dati sono in cache e ancora validi
   if (cache.has(cacheKey)) {
     const cached = cache.get(cacheKey);
     if (Date.now() - cached.timestamp < CACHE_TTL) {
@@ -113,9 +129,8 @@ async function getCachedBorgoData(context) {
     }
   }
 
-  // Se non in cache o scaduti, recupera nuovi dati
   console.log("🔄 Recupero nuovi dati dal database");
-  const data = await getBorgoData(context);
+  const data = await getBorgoData(context, null);
 
   cache.set(cacheKey, {
     data,
@@ -125,17 +140,57 @@ async function getCachedBorgoData(context) {
   return data;
 }
 
-// RECUPERO DATI
-async function getBorgoData(context) {
+// ====================================
+// ESTRAZIONE LOCALITÀ DAL MESSAGGIO
+// ====================================
+function extractLocationFromMessage(message) {
+  const messageLower = message.toLowerCase();
+
+  // Pattern per località italiane
+  const locationPatterns = [
+    /meteo (?:a|di|per|in|ad) ([a-zàèéìòùA-ZÀÈÉÌÒÙ\s]+?)(?:\?|$|,|\.|!)/i,
+    /tempo (?:a|di|per|in|ad) ([a-zàèéìòùA-ZÀÈÉÌÒÙ\s]+?)(?:\?|$|,|\.|!)/i,
+    /temperature (?:a|di|per|in|ad) ([a-zàèéìòùA-ZÀÈÉÌÒÙ\s]+?)(?:\?|$|,|\.|!)/i,
+    /(?:com'è|come è|che tempo fa) (?:a|di|per|in|ad) ([a-zàèéìòùA-ZÀÈÉÌÒÙ\s]+?)(?:\?|$|,|\.|!)/i,
+    /previsioni (?:a|di|per|in|ad) ([a-zàèéìòùA-ZÀÈÉÌÒÙ\s]+?)(?:\?|$|,|\.|!)/i,
+  ];
+
+  for (const pattern of locationPatterns) {
+    const match = message.match(pattern);
+    if (match && match[1]) {
+      let location = match[1].trim();
+
+      // Rimuovi parole comuni di troppo
+      location = location.replace(/\b(oggi|domani|adesso|ora)\b/gi, "").trim();
+
+      // Aggiungi ",IT" se non presente e non è una città con paese già specificato
+      if (!location.includes(",")) {
+        location = `${location},IT`;
+      }
+
+      console.log(`📍 Località estratta: ${location}`);
+      return location;
+    }
+  }
+
+  return null;
+}
+
+// ====================================
+// RECUPERO DATI DA MONGODB
+// ====================================
+async function getBorgoData(context, locationOverride = null) {
   try {
+    const db = getDB();
+
     // Chiamate parallele per ottimizzare performance
     const [attrazioni, ristoranti, eventi, trasporti, meteo] =
       await Promise.all([
-        fetchAttrazioni(),
-        fetchRistoranti(),
-        fetchEventiSettimana(),
-        fetchInfoTrasporti(),
-        fetchMeteo(),
+        fetchAttrazioni(db),
+        fetchRistoranti(db),
+        fetchEventiSettimana(db),
+        fetchInfoTrasporti(db),
+        fetchMeteo(locationOverride),
       ]);
 
     return {
@@ -151,128 +206,220 @@ async function getBorgoData(context) {
   }
 }
 
-async function fetchAttrazioni() {
-  // TODO: Sostituire con query database reale
-  // const result = await db.query('SELECT * FROM attrazioni WHERE attivo = true');
-  // return result.rows;
+// ====================================
+// QUERY MONGODB
+// ====================================
+async function fetchAttrazioni(db) {
+  try {
+    const attrazioni = await db
+      .collection("attrazioni")
+      .find({
+        attivo: true,
+      })
+      .sort({ priorita: -1 })
+      .limit(10)
+      .toArray();
 
-  return [
-    {
-      nome: "Chiesa di San Francesco",
-      descrizione: "Chiesa medievale del XIII secolo con affreschi originali",
-      orari: "Lun-Dom 9:00-18:00",
-      distanza: "200m dal centro",
-      prezzoIngresso: "Gratuito",
-    },
-    {
-      nome: "Museo del Borgo",
-      descrizione: "Collezione di arte locale e reperti storici",
-      orari: "Mar-Dom 10:00-17:00, chiuso lunedì",
-      distanza: "300m dal centro",
-      prezzoIngresso: "€5 intero, €3 ridotto",
-    },
-  ];
+    return attrazioni.map((attr) => ({
+      nome: attr.nome,
+      descrizione: attr.descrizione,
+      orari: attr.orari || "Orari non specificati",
+      distanza: attr.distanza || "Distanza non disponibile",
+      prezzoIngresso: attr.prezzoIngresso || attr.prezzo || "Gratuito",
+    }));
+  } catch (error) {
+    console.error("❌ Errore fetch attrazioni:", error);
+    return [];
+  }
 }
 
-async function fetchRistoranti() {
-  // TODO: Query database con filtro per giorno corrente
-  return [
-    {
-      nome: "Trattoria da Maria",
-      tipoCucina: "Tradizionale locale",
-      indirizzo: "Via Roma 15",
-      orari: "12:00-15:00, 19:00-22:00",
-      fasciaPrezzo: "€€",
-      specialita: "Pasta fatta in casa, arrosti",
-    },
-    {
-      nome: "Osteria del Borgo",
-      tipoCucina: "Cucina tipica",
-      indirizzo: "Piazza Centrale 8",
-      orari: "12:30-14:30, 19:30-22:30",
-      fasciaPrezzo: "€€€",
-      specialita: "Menu degustazione locale",
-    },
-  ];
+async function fetchRistoranti(db) {
+  try {
+    const ristoranti = await db
+      .collection("ristoranti")
+      .find({
+        attivo: true,
+      })
+      .sort({ rating: -1 })
+      .limit(10)
+      .toArray();
+
+    return ristoranti.map((rist) => ({
+      nome: rist.nome,
+      tipoCucina: rist.tipoCucina || rist.tipo || "Cucina locale",
+      indirizzo: rist.indirizzo,
+      orari: rist.orari || "Orari non disponibili",
+      fasciaPrezzo: rist.fasciaPrezzo || rist.prezzo || "€€",
+      specialita: rist.specialita || rist.piatti?.join(", ") || null,
+    }));
+  } catch (error) {
+    console.error("❌ Errore fetch ristoranti:", error);
+    return [];
+  }
 }
 
-async function fetchEventiSettimana() {
-  // TODO: Query database per eventi prossima settimana
-  return [
-    {
-      titolo: "Mercato settimanale",
-      data: "Giovedì 10 Ottobre",
-      ora: "8:00-13:00",
-      luogo: "Piazza del Mercato",
-      descrizione: "Prodotti locali, artigianato e specialità gastronomiche",
-      prezzo: null,
-    },
-  ];
+async function fetchEventiSettimana(db) {
+  try {
+    const oggi = new Date();
+    const settimanaSuccessiva = new Date();
+    settimanaSuccessiva.setDate(oggi.getDate() + 7);
+
+    const eventi = await db
+      .collection("eventi")
+      .find({
+        attivo: true,
+        data: {
+          $gte: oggi,
+          $lte: settimanaSuccessiva,
+        },
+      })
+      .sort({ data: 1 })
+      .limit(5)
+      .toArray();
+
+    return eventi.map((evento) => ({
+      titolo: evento.titolo || evento.nome,
+      data: formatDate(evento.data),
+      ora: evento.ora || evento.orario || "Orario da definire",
+      luogo: evento.luogo || evento.location,
+      descrizione: evento.descrizione || "",
+      prezzo: evento.prezzo || null,
+    }));
+  } catch (error) {
+    console.error("❌ Errore fetch eventi:", error);
+    return [];
+  }
 }
 
-async function fetchInfoTrasporti() {
-  // TODO: Dati trasporti aggiornati
-  return {
-    busLocali:
-      "Linea 1 ogni 30 min (7:00-20:00), fermate: Centro-Stazione-Museo",
-    parcheggi:
-      "Parcheggio Comunale (€1/ora), Parcheggio Chiesa (gratuito, limitato)",
-    collegamentiExtraurbani:
-      "Autobus per città principali ore 8:30, 12:00, 17:30",
-    taxi: "Tel. 0123-456789, stazionamento in Piazza Centrale",
-  };
+async function fetchInfoTrasporti(db) {
+  try {
+    const trasporti = await db
+      .collection("trasporti")
+      .findOne({ attivo: true });
+
+    if (!trasporti) {
+      return getDefaultTrasporti();
+    }
+
+    return {
+      busLocali: trasporti.busLocali || "Informazioni non disponibili",
+      parcheggi: trasporti.parcheggi || "Contattare info point",
+      collegamentiExtraurbani:
+        trasporti.collegamentiExtraurbani || "Consultare il sito del comune",
+      taxi: trasporti.taxi || "Servizio disponibile su chiamata",
+    };
+  } catch (error) {
+    console.error("❌ Errore fetch trasporti:", error);
+    return getDefaultTrasporti();
+  }
 }
 
-async function fetchMeteo() {
+// ====================================
+// METEO CON SUPPORTO LOCALITÀ DINAMICA
+// ====================================
+async function fetchMeteo(locationOverride = null) {
   try {
     if (!process.env.OPENWEATHER_API_KEY) {
-      return "Informazioni meteo non configurate";
+      console.warn("⚠️ OpenWeather API Key non configurata");
+      return {
+        available: false,
+        message: "Informazioni meteo non configurate",
+      };
     }
+
+    // Usa location richiesta o fallback al borgo principale
+    const location = locationOverride || process.env.BORGO_NAME || "Roma,IT";
+
+    console.log(`🌤️ Recupero meteo per: ${location}`);
 
     const response = await axios.get(
       "https://api.openweathermap.org/data/2.5/weather",
       {
         params: {
-          q: process.env.BORGO_NAME || "Roma,IT",
+          q: location,
           appid: process.env.OPENWEATHER_API_KEY,
           units: "metric",
           lang: "it",
         },
-        timeout: 5000, // 5 secondi timeout
+        timeout: 5000,
       }
     );
 
     const weather = response.data;
-    return `${weather.weather[0].description}, ${Math.round(
-      weather.main.temp
-    )}°C`;
+
+    // Formatta risposta completa
+    return {
+      available: true,
+      location: weather.name,
+      description: weather.weather[0].description,
+      temp: Math.round(weather.main.temp),
+      tempMin: Math.round(weather.main.temp_min),
+      tempMax: Math.round(weather.main.temp_max),
+      feelsLike: Math.round(weather.main.feels_like),
+      humidity: weather.main.humidity,
+      windSpeed: Math.round(weather.wind.speed * 3.6), // m/s to km/h
+      formatted: `${weather.weather[0].description}, ${Math.round(
+        weather.main.temp
+      )}°C`,
+      detailedFormatted: `📍 ${weather.name}
+🌡️ Temperatura: ${Math.round(weather.main.temp)}°C (percepiti ${Math.round(
+        weather.main.feels_like
+      )}°C)
+📊 Min/Max: ${Math.round(weather.main.temp_min)}°C / ${Math.round(
+        weather.main.temp_max
+      )}°C
+🌤️ Condizioni: ${weather.weather[0].description}
+💨 Vento: ${Math.round(weather.wind.speed * 3.6)} km/h
+💧 Umidità: ${weather.main.humidity}%`,
+    };
   } catch (error) {
-    console.warn("⚠️ Impossibile recuperare dati meteo:", error.message);
-    return "Informazioni meteo non disponibili";
+    if (error.response?.status === 404) {
+      console.warn(`⚠️ Località non trovata: ${locationOverride}`);
+      return {
+        available: false,
+        location: locationOverride,
+        message: `Località "${locationOverride}" non trovata`,
+      };
+    }
+
+    console.warn("⚠️ Errore recupero meteo:", error.message);
+    return {
+      available: false,
+      message: "Informazioni meteo temporaneamente non disponibili",
+    };
   }
 }
 
+// ====================================
+// DATI DI FALLBACK
+// ====================================
 function getDefaultBorgoData() {
   return {
     attrazioni: [],
     ristoranti: [],
     eventi: [],
-    trasporti: {
-      busLocali: "Informazioni non disponibili",
-      parcheggi: "Contattare info point",
-      collegamentiExtraurbani: "Consultare il sito del comune",
-      taxi: "Servizio disponibile su chiamata",
+    trasporti: getDefaultTrasporti(),
+    meteo: {
+      available: false,
+      message: "Informazioni non disponibili",
     },
-    meteo: "Informazioni non disponibili",
   };
 }
 
+function getDefaultTrasporti() {
+  return {
+    busLocali: "Informazioni non disponibili",
+    parcheggi: "Contattare info point",
+    collegamentiExtraurbani: "Consultare il sito del comune",
+    taxi: "Servizio disponibile su chiamata",
+  };
+}
+
+// ====================================
 // RICERCA WEB
+// ====================================
 function analyzeNeedsWebSearch(message) {
   const webSearchKeywords = [
-    "meteo",
-    "tempo",
-    "temperature",
     "collegamenti",
     "treno",
     "aereo",
@@ -285,6 +432,9 @@ function analyzeNeedsWebSearch(message) {
     "dintorni",
     "vicino",
     "zona",
+    "ferry",
+    "traghetto",
+    "aliscafo",
   ];
 
   const messageLower = message.toLowerCase();
@@ -312,7 +462,7 @@ async function performWebSearch(query, context) {
         country: "IT",
         search_lang: "it",
       },
-      timeout: 5000, // 5 secondi timeout
+      timeout: 5000,
     });
 
     const results = response.data.web?.results || [];
@@ -332,18 +482,36 @@ async function performWebSearch(query, context) {
   }
 }
 
+// ====================================
 // COSTRUZIONE PROMPT
+// ====================================
 function buildSystemPrompt(borgoData, webSearchResults) {
+  // Formatta informazioni meteo
+  let meteoInfo = "Informazioni meteo non disponibili";
+
+  if (borgoData.meteo.available) {
+    meteoInfo = borgoData.meteo.detailedFormatted;
+  } else {
+    meteoInfo = borgoData.meteo.message;
+  }
+
   let prompt = `Sei una nonna affettuosa che conosce perfettamente il borgo e aiuta i visitatori con consigli calorosi ma discreti.
 
 Caratteristiche del tuo personaggio:
-- Parli in modo affettuoso ma non eccessivo, usando occasionalmente "caro/a" o "tesoro"
+- Parli in modo affettuoso ma non eccessivo, usando raramente "caro/a" o "tesoro"
+- Hai una conoscenza approfondita del borgo e delle sue attrazioni
+- Fornisci informazioni pratiche e aggiornate
+- Sei paziente e disponibile, rispondi a tutte le domande
+- Non essere prolissa, mantieni le risposte concise e utili
+- Usa un tono amichevole ma professionale e soprattutto con accento napoletano
+- Usa anche emoji in modo moderato per rendere il tono più caldo e accogliente
 - Sei disponibile e competente senza essere invadente
 - Dai consigli pratici e specifici basandoti sui dati reali
 - Non inventi informazioni, se non sai qualcosa lo ammetti onestamente
 - Mantieni le risposte concise ma complete (massimo 3-4 frasi)
 - Se suggerisci luoghi o attività, menziona dettagli pratici come orari e distanze
 - Alla fine della risposta, puoi suggerire fino a 2 domande di follow-up pertinenti racchiuse tra [SUGGESTIONS] e [/SUGGESTIONS]
+- IMPORTANTE: Se hai informazioni meteo disponibili, usale! Non dire che non le hai se sono presenti qui sotto.
 
 Dati attuali del borgo (${new Date().toLocaleDateString("it-IT")}):
 
@@ -360,7 +528,7 @@ TRASPORTI:
 ${formatTrasporti(borgoData.trasporti)}
 
 INFORMAZIONI METEO:
-${borgoData.meteo}`;
+${meteoInfo}`;
 
   if (webSearchResults) {
     prompt += `\n\nINFORMAZIONI AGGIUNTIVE DA WEB:
@@ -372,7 +540,9 @@ Usa queste informazioni per arricchire le tue risposte, ma mantieni sempre il fo
   return prompt;
 }
 
+// ====================================
 // FORMATTAZIONE DATI
+// ====================================
 function formatAttrazioni(attrazioni) {
   if (!attrazioni || attrazioni.length === 0) {
     return "Nessuna attrazione disponibile al momento";
@@ -435,7 +605,9 @@ Collegamenti extraurbani: ${trasporti.collegamentiExtraurbani}
 Info taxi: ${trasporti.taxi}`;
 }
 
+// ====================================
 // PARSING RISPOSTA
+// ====================================
 function parseAssistantResponse(message, borgoData) {
   let cleanMessage = message;
   let suggestions = [];
@@ -514,6 +686,40 @@ function parseAssistantResponse(message, borgoData) {
     suggestions,
     structuredData,
   };
+}
+
+// ====================================
+// UTILITY
+// ====================================
+function formatDate(date) {
+  if (!date) return "Data non disponibile";
+
+  const d = new Date(date);
+  const giorni = [
+    "Domenica",
+    "Lunedì",
+    "Martedì",
+    "Mercoledì",
+    "Giovedì",
+    "Venerdì",
+    "Sabato",
+  ];
+  const mesi = [
+    "Gennaio",
+    "Febbraio",
+    "Marzo",
+    "Aprile",
+    "Maggio",
+    "Giugno",
+    "Luglio",
+    "Agosto",
+    "Settembre",
+    "Ottobre",
+    "Novembre",
+    "Dicembre",
+  ];
+
+  return `${giorni[d.getDay()]} ${d.getDate()} ${mesi[d.getMonth()]}`;
 }
 
 module.exports = router;
