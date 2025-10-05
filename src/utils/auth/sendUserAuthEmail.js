@@ -20,6 +20,7 @@ const sendUserAuthEmail = async (userEmail, token) => {
       process.env.NODE_ENV === "development"
         ? "http://localhost:5173"
         : "https://vicuss.netlify.app";
+
     const verifyEmailLink = `${baseURL}/user/verify-email/${token}`;
 
     const mailOptions = {
