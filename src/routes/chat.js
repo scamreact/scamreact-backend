@@ -1,7 +1,7 @@
 const express = require("express");
 const Anthropic = require("@anthropic-ai/sdk");
 const axios = require("axios");
-const { getDB } = require("../connection/db.js");
+const connectDB = require("../connection/db.js");
 const router = express.Router();
 
 // Inizializzazione Anthropic
@@ -181,7 +181,7 @@ function extractLocationFromMessage(message) {
 // ====================================
 async function getBorgoData(context, locationOverride = null) {
   try {
-    const db = getDB();
+    const db = connectDB();
 
     // Chiamate parallele per ottimizzare performance
     const [attrazioni, ristoranti, eventi, trasporti, meteo] =
@@ -328,7 +328,8 @@ async function fetchMeteo(locationOverride = null) {
     }
 
     // Usa location richiesta o fallback al borgo principale
-    const location = locationOverride || process.env.BORGO_NAME || "Roma,IT";
+    const location = locationOverride ||
+      process.env.BORGO_NAME || { borghi: borgo.name };
 
     console.log(`🌤️ Recupero meteo per: ${location}`);
 
