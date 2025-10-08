@@ -1,6 +1,6 @@
 const express = require("express");
 const Experience = require("../models/experience.model.js");
-const router = express.Router();
+const router = express.Router({ mergeParams: true }); // 🔑 importante;
 const {
   createExperience,
   getExperience,

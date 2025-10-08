@@ -1,5 +1,5 @@
 const express = require("express");
-const stripe = require("stripe")("sk_test_..."); // Tua chiave segreta
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY); // Tua chiave segreta
 const cron = require("node-cron");
 const app = express();
 
@@ -406,6 +406,6 @@ app.get("/api/test", (req, res) => {
   });
 });
 
-app.listen(3000, () => {
+app.listen(3001, () => {
   console.log("🚀 Server B&B API avviato sulla porta 3000");
 });

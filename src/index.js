@@ -6,6 +6,8 @@ const connectDB = require("./connection/db.js");
 const app = express();
 const mongoose = require("mongoose");
 
+const { initializePayoutScheduler } = require("./services/payout.service");
+
 dotenv.config();
 connectDB();
 
@@ -49,6 +51,9 @@ const experienceRoutes = require("./routes/experience.routes.js");
 const coworkingRoutes = require("./routes/coworking.routes.js");
 const accommodationRoutes = require("./routes/accommodation.routes.js");
 const chatRoutes = require("./routes/chat.js");
+// const paymentRoutes = require("./routes/payments");
+// const bookingRoutes = require("./routes/bookings");
+const stripeRoutes = require("./routes/stripe.routes.js");
 
 app.use("/", authRoutes);
 app.use("/user", userRoutes);
@@ -58,6 +63,58 @@ app.use("/borghi/:_id/experience", experienceRoutes);
 app.use("/borghi/:_id/coworking", coworkingRoutes);
 app.use("/borghi/:param/accommodation", accommodationRoutes);
 app.use("/chat", chatRoutes);
+// app.use("/api/payments", paymentRoutes); // Rotta per i pagamenti
+// app.use("/api/bookings", bookingRoutes);
+// Mount routes
+app.use("/api", stripeRoutes);
+
+// Body parser - IMPORTANTE: il webhook route usa raw body
+app.use((req, res, next) => {
+  if (req.originalUrl === "/api/webhook") {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
+
+// Endpoint di test
+app.get("/api/test", (req, res) => {
+  res.json({
+    message: "API B&B Stripe funzionante",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Logging
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
+});
+
+// Health check endpoint
+app.get("/api/health", (req, res) => {
+  res.json({
+    status: "ok",
+    message: "API B&B Stripe funzionante",
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Test endpoint
+app.get("/api/test", (req, res) => {
+  res.json({
+    message: "API B&B Stripe funzionante",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development",
+  });
+});
+
+// // Payout automatici ogni lunedì alle 10:00
+// const { processWeeklyPayouts } = require("./services/stripeService");
+// cron.schedule("0 10 * * 1", async () => {
+//   console.log("🔄 Avvio payout automatici settimanali...");
+//   await processWeeklyPayouts();
+// });
 
 // Endpoint per ottenere traduzioni (API più chiara e non ambigua)
 app.get("/translations/:lang", async (req, res) => {
@@ -92,6 +149,15 @@ app.use((req, res) => {
   });
 });
 
+// ========================================
+// PAYOUT SCHEDULER
+// ========================================
+
+// Inizializza scheduler payout automatici
+if (process.env.ENABLE_AUTO_PAYOUTS === "true") {
+  initializePayoutScheduler();
+}
+
 // Avvio del server
 const port = process.env.PORT || 5000;
 app.listen(port, () => {
@@ -100,5 +166,14 @@ app.listen(port, () => {
       process.env.NODE_ENV || "development"
     } mode`
   );
-  console.log("NODE_ENV:", process.env.NODE_ENV);
+  console.log("✅ MongoDB connected!");
+  console.log("🚀 Server B&B API avviato");
+  console.log(`📡 Porta: ${port}`);
+  console.log(`🌍 Ambiente: ${process.env.NODE_ENV || "development"}`);
+  console.log(
+    `⏰ Auto-payouts: ${
+      process.env.ENABLE_AUTO_PAYOUTS === "true" ? "Attivati" : "Disattivati"
+    }`
+  );
+  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 });
