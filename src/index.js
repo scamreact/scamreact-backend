@@ -58,7 +58,7 @@ app.use("/admin", adminRoutes);
 app.use("/borghi", borgoRoute);
 app.use("/borghi/:param/accommodation", accommodationRoutes);
 app.use("/borghi/:param/experience", experienceRoutes);
-app.use("/borghi/:_id/coworking", coworkingRoutes);
+app.use("/borghi/:param/coworking", coworkingRoutes);
 app.use("/chat", chatRoutes);
 
 // Mount routes

@@ -29,18 +29,19 @@
 
 // module.exports = Coworking;
 
-// models/Coworking.js
 const mongoose = require("mongoose");
-const { Schema } = mongoose;
+const Schema = mongoose.Schema;
 
 const cowLocationSchema = new Schema({
   address: { type: String },
-  city: { type: String, index: true },
-  postcode: { type: String },
-  country: { type: String, default: "Italy" },
-  geo: {
+  city: { type: String },
+  state: { type: String },
+  zip: { type: String },
+  country: { type: String },
+  coordinates: {
+    // GeoJSON Point
     type: { type: String, enum: ["Point"], default: "Point" },
-    coordinates: { type: [Number] }, // [lng, lat]
+    coordinates: { type: [Number], default: [0, 0] }, // [lng, lat]
   },
 });
 
@@ -64,28 +65,35 @@ const coworkingSchema = new Schema(
     openingHours: {
       // semplice fallback: orario per giorno (opzionale)
       monday: { open: String, close: String },
-      // ... ripeti per gli altri giorni
+      tuesday: { open: String, close: String },
+      wednesday: { open: String, close: String },
+      thursday: { open: String, close: String },
+      friday: { open: String, close: String },
+      saturday: { open: String, close: String },
+      sunday: { open: String, close: String },
     },
     minDays: { type: Number, default: 1 }, // soggiorno minimo in giorni
     maxDays: { type: Number }, // opzionale
     ratingCount: { type: Number, default: 0 },
     ratingSum: { type: Number, default: 0 }, // per virtual averageRating
     published: { type: Boolean, default: false },
+    borgo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Borgo",
+      required: true,
+    }, // 🔗 collegamento
   },
+
   { timestamps: true }
 );
 
-// virtual
+// Index per ricerche geospaziali
+coworkingSchema.index({ "location.coordinates": "2dsphere" });
+
+// Virtual per calcolare la valutazione media
 coworkingSchema.virtual("averageRating").get(function () {
-  if (!this.ratingCount) return 0;
+  if (this.ratingCount === 0) return 0;
   return this.ratingSum / this.ratingCount;
 });
 
-// indexes
-coworkingSchema.index({ "location.geo": "2dsphere" });
-coworkingSchema.index({ pricePerDay: 1 });
-coworkingSchema.index({ category: 1 });
-
-const Coworking = mongoose.model("Coworking", coworkingSchema);
-
-module.exports = Coworking;
+module.exports = mongoose.model("Coworking", coworkingSchema);
