@@ -5,7 +5,6 @@ const cors = require("cors");
 const connectDB = require("./connection/db.js");
 const app = express();
 const mongoose = require("mongoose");
-
 const { initializePayoutScheduler } = require("./services/payout.service");
 
 dotenv.config();
@@ -51,20 +50,17 @@ const experienceRoutes = require("./routes/experience.routes.js");
 const coworkingRoutes = require("./routes/coworking.routes.js");
 const accommodationRoutes = require("./routes/accommodation.routes.js");
 const chatRoutes = require("./routes/chat.js");
-// const paymentRoutes = require("./routes/payments");
-// const bookingRoutes = require("./routes/bookings");
 const stripeRoutes = require("./routes/stripe.routes.js");
 
 app.use("/", authRoutes);
 app.use("/user", userRoutes);
 app.use("/admin", adminRoutes);
 app.use("/borghi", borgoRoute);
-app.use("/borghi/:_id/experience", experienceRoutes);
-app.use("/borghi/:_id/coworking", coworkingRoutes);
 app.use("/borghi/:param/accommodation", accommodationRoutes);
+app.use("/borghi/:param/experience", experienceRoutes);
+app.use("/borghi/:_id/coworking", coworkingRoutes);
 app.use("/chat", chatRoutes);
-// app.use("/api/payments", paymentRoutes); // Rotta per i pagamenti
-// app.use("/api/bookings", bookingRoutes);
+
 // Mount routes
 app.use("/api", stripeRoutes);
 

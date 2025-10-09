@@ -93,6 +93,8 @@ const getAccommodations = async (req, res) => {
       borgo: borgo,
       accomodation: accommodations,
     });
+    // Nel controller, aggiungi questo log
+    console.log("accommodations trovate:", accommodations.length);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
