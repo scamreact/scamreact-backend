@@ -3,7 +3,7 @@ const router = express.Router();
 
 // Controllers
 const paymentController = require("../controllers/payment.controller");
-const hostController = require("../controllers/host.controller");
+const hostController = require("../controllers/host.stripe.controller");
 const webhookController = require("../controllers/webhook.controller");
 
 // Middleware

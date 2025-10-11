@@ -1,6 +1,32 @@
 const jwt = require("jsonwebtoken");
 const errorHandler = require("../utils/error.js");
 const cloudinary = require("../utils/cloudinary/cloudinary.js");
+const Host = require("../models/host.model.js");
+const User = require("../models/user.model.js");
+
+const authenticate = async (req, res, next) => {
+  try {
+    const token = req.headers.authorization?.replace("Bearer ", "");
+
+    if (!token) {
+      return res
+        .status(401)
+        .json({ error: "Token di autenticazione mancante" });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const user = await User.findById(decoded._id);
+
+    if (!user) {
+      return res.status(401).json({ error: "Utente non trovato" });
+    }
+
+    req.user = user;
+    next();
+  } catch (error) {
+    res.status(401).json({ error: "Non autorizzato" });
+  }
+};
 
 const verifyToken = (req, res, next) => {
   // Extract token from either cookie or Authorization header
@@ -55,4 +81,54 @@ const cloudinaryMiddleware = async (req, res, next) => {
     });
   }
 };
-module.exports = { verifyToken, verifyAdmin, cloudinaryMiddleware };
+
+// ==================== MIDDLEWARE: hostAuth.middleware.js ====================
+
+// Verifica che l'utente sia un host verificato
+const requireHost = async (req, res, next) => {
+  try {
+    const host = await Host.findOne({ user: req.user._id });
+
+    if (!host) {
+      return res.status(403).json({
+        error: "Accesso negato. Devi essere registrato come host.",
+      });
+    }
+
+    if (host.status !== "active") {
+      return res.status(403).json({
+        error: `Account host non attivo. Status: ${host.status}`,
+      });
+    }
+
+    req.host = host;
+    next();
+  } catch (error) {
+    console.error("Error in requireHost middleware:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Verifica che l'utente sia admin
+const requireAdmin = async (req, res, next) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        error: "Accesso negato. Richiesti privilegi admin.",
+      });
+    }
+    next();
+  } catch (error) {
+    console.error("Error in requireAdmin middleware:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+module.exports = {
+  authenticate,
+  verifyToken,
+  verifyAdmin,
+  cloudinaryMiddleware,
+  requireHost,
+  requireAdmin,
+};

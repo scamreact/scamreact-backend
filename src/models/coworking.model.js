@@ -96,4 +96,6 @@ coworkingSchema.virtual("averageRating").get(function () {
   return this.ratingSum / this.ratingCount;
 });
 
-module.exports = mongoose.model("Coworking", coworkingSchema);
+const Coworking = mongoose.model("Coworking", coworkingSchema);
+
+module.exports = Coworking;

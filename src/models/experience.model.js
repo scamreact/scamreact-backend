@@ -80,4 +80,6 @@ const ExperienceSchema = new Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model("Experience", ExperienceSchema);
+const Experience = mongoose.model("Experience", ExperienceSchema);
+
+module.exports = Experience;

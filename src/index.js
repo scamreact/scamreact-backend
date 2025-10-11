@@ -51,6 +51,8 @@ const coworkingRoutes = require("./routes/coworking.routes.js");
 const accommodationRoutes = require("./routes/accommodation.routes.js");
 const chatRoutes = require("./routes/chat.js");
 const stripeRoutes = require("./routes/stripe.routes.js");
+const bookingRoutes = require("./routes/booking.routes.js");
+const hostRoutes = require("./routes/host.routes");
 
 app.use("/", authRoutes);
 app.use("/user", userRoutes);
@@ -60,6 +62,8 @@ app.use("/borghi/:param/accommodation", accommodationRoutes);
 app.use("/borghi/:param/experience", experienceRoutes);
 app.use("/borghi/:param/coworking", coworkingRoutes);
 app.use("/chat", chatRoutes);
+app.use("/bookings", bookingRoutes);
+app.use("/host", hostRoutes);
 
 // Mount routes
 app.use("/api", stripeRoutes);
