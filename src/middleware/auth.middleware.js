@@ -1,137 +1,193 @@
-const jwt = require("jsonwebtoken");
-const errorHandler = require("../utils/error.js");
-const cloudinary = require("../utils/cloudinary/cloudinary.js");
-const Host = require("../models/host.model.js");
-const User = require("../models/user.model.js");
+// MODELLO DA USARE COME BASE PER NUOVI MIDDLEWARE
+// const jwt = require("jsonwebtoken");
+// const errorHandler = require("../utils/error.js");
+// const cloudinary = require("../utils/cloudinary/cloudinary.js");
+// const Host = require("../models/host.model.js");
+// const User = require("../models/user.model.js");
 
-const authenticate = async (req, res, next) => {
-  try {
-    const token = req.headers.authorization?.replace("Bearer ", "");
+// // const authenticate = async (req, res, next) => {
+// //   try {
+// //     const token = req.headers.authorization?.replace("Bearer ", "");
 
-    if (!token) {
-      return res
-        .status(401)
-        .json({ error: "Token di autenticazione mancante" });
-    }
+// //     if (!token) {
+// //       return res
+// //         .status(401)
+// //         .json({ error: "Token di autenticazione mancante" });
+// //     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded._id);
+// //     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+// //     const user = await User.findById(decoded._id);
 
-    if (!user) {
-      return res.status(401).json({ error: "Utente non trovato" });
-    }
+// //     if (!user) {
+// //       return res.status(401).json({ error: "Utente non trovato" });
+// //     }
 
-    req.user = user;
-    next();
-  } catch (error) {
-    res.status(401).json({ error: "Non autorizzato" });
-  }
-};
+// //     req.user = user;
+// //     next();
+// //   } catch (error) {
+// //     res.status(401).json({ error: "Non autorizzato" });
+// //   }
+// // };
 
-const verifyToken = (req, res, next) => {
-  // Extract token from either cookie or Authorization header
-  const token =
-    req.cookies.access_token || req.headers.authorization?.split(" ")[1];
+// /**
+//  * Middleware principale per autenticazione JWT
+//  * Verifica il token e carica l'utente completo dal database
+//  * Supporta token da: Authorization header o cookie
+//  */
+// const authenticate = async (req, res, next) => {
+//   try {
+//     // Estrai token da header o cookie
+//     const token =
+//       req.cookies?.access_token ||
+//       req.headers.authorization?.replace("Bearer ", "");
 
-  if (!token) return next(errorHandler(401, "You are not authenticated"));
+//     console.log("🔑 Token ricevuto:", token ? "presente" : "mancante");
 
-  // Verify the token using JWT
-  jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
-    if (err) return next(errorHandler(403, "Token is not valid"));
+//     if (!token) {
+//       return res.status(401).json({
+//         error: "Token di autenticazione mancante",
+//       });
+//     }
 
-    req.user = user;
-    next();
-  });
-};
+//     // Verifica il token
+//     const decoded = jwt.verify(token, process.env.JWT_SECRET);
+//     console.log("✅ Token decodificato:", decoded);
 
-// Middleware to verify if the user is an admin
-const verifyAdmin = (req, res, next) => {
-  const role = req.user?.role;
+//     // Carica l'utente completo dal database
+//     const userId = decoded._id || decoded.id;
+//     const user = await User.findById(userId);
+//     console.log("👤 Utente trovato:", user ? user.email : "NESSUNO");
 
-  if (!role || role !== "admin") {
-    return next(
-      errorHandler(
-        403,
-        "Permission denied. Only admin users can access this resource."
-      )
-    );
-  }
-  next();
-};
+//     if (!user) {
+//       return res.status(401).json({
+//         error: "Utente non trovato",
+//         debug: {
+//           decodedId: decoded._id,
+//           message: "L'ID nel token non corrisponde a nessun utente",
+//         },
+//       });
+//     }
 
-const cloudinaryMiddleware = async (req, res, next) => {
-  try {
-    if (req.body.profilePicture) {
-      const profilePictureResult = await cloudinary.uploader.upload(
-        req.body.profilePicture,
-        {
-          folder: "users",
-          allowed_formats: ["png", "jpg", "jpeg", "avif"],
-        }
-      );
+//     // Attacca l'utente alla request
+//     req.user = user;
+//     next();
+//   } catch (error) {
+//     console.error("❌ Errore autenticazione:", error.message);
 
-      req.body.profilePicture = profilePictureResult.secure_url;
-    }
+//     if (error.name === "JsonWebTokenError") {
+//       return res.status(401).json({ error: "Token non valido" });
+//     }
+//     if (error.name === "TokenExpiredError") {
+//       return res.status(401).json({ error: "Token scaduto" });
+//     }
+//     res.status(401).json({ error: "Non autorizzato" });
+//   }
+// };
 
-    next();
-  } catch (err) {
-    console.log(err);
-    return res.status(500).json({
-      message: "Error uploading profile picture. Check the image format.",
-    });
-  }
-};
+// const verifyToken = (req, res, next) => {
+//   // Extract token from either cookie or Authorization header
+//   const token =
+//     req.cookies.access_token || req.headers.authorization?.split(" ")[1];
 
-// ==================== MIDDLEWARE: hostAuth.middleware.js ====================
+//   if (!token) return next(errorHandler(401, "Non sei autenticato"));
 
-// Verifica che l'utente sia un host verificato
-const requireHost = async (req, res, next) => {
-  try {
-    const host = await Host.findOne({ user: req.user._id });
+//   // Verify the token using JWT
+//   jwt.verify(token, process.env.JWT_SECRET, (err, user) => {
+//     if (err) return next(errorHandler(403, "Il token non è valido"));
 
-    if (!host) {
-      return res.status(403).json({
-        error: "Accesso negato. Devi essere registrato come host.",
-      });
-    }
+//     req.user = user;
+//     next();
+//   });
+// };
 
-    if (host.status !== "active") {
-      return res.status(403).json({
-        error: `Account host non attivo. Status: ${host.status}`,
-      });
-    }
+// // Middleware to verify if the user is an admin
+// const verifyAdmin = (req, res, next) => {
+//   const role = req.user?.role;
 
-    req.host = host;
-    next();
-  } catch (error) {
-    console.error("Error in requireHost middleware:", error);
-    res.status(500).json({ error: error.message });
-  }
-};
+//   if (!role || role !== "admin") {
+//     return next(
+//       errorHandler(
+//         403,
+//         "Permission denied. Only admin users can access this resource."
+//       )
+//     );
+//   }
+//   next();
+// };
 
-// Verifica che l'utente sia admin
-const requireAdmin = async (req, res, next) => {
-  try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({
-        error: "Accesso negato. Richiesti privilegi admin.",
-      });
-    }
-    next();
-  } catch (error) {
-    console.error("Error in requireAdmin middleware:", error);
-    res.status(500).json({ error: error.message });
-  }
-};
+// const cloudinaryMiddleware = async (req, res, next) => {
+//   try {
+//     if (req.body.profilePicture) {
+//       const profilePictureResult = await cloudinary.uploader.upload(
+//         req.body.profilePicture,
+//         {
+//           folder: "users",
+//           allowed_formats: ["png", "jpg", "jpeg", "avif"],
+//         }
+//       );
 
-module.exports = {
-  authenticate,
-  verifyToken,
-  verifyAdmin,
-  cloudinaryMiddleware,
-  requireHost,
-  requireAdmin,
-};
+//       req.body.profilePicture = profilePictureResult.secure_url;
+//     }
+
+//     next();
+//   } catch (err) {
+//     console.log(err);
+//     return res.status(500).json({
+//       message: "Error uploading profile picture. Check the image format.",
+//     });
+//   }
+// };
+
+// // ==================== MIDDLEWARE: hostAuth.middleware.js ====================
+
+// // Verifica che l'utente sia un host verificato
+// const requireHost = async (req, res, next) => {
+//   try {
+//     const host = await Host.findOne({ user: req.user._id });
+
+//     if (!host) {
+//       return res.status(403).json({
+//         error: "Accesso negato. Devi essere registrato come host.",
+//       });
+//     }
+
+//     if (host.status !== "active") {
+//       return res.status(403).json({
+//         error: `Account host non attivo. Status: ${host.status}`,
+//       });
+//     }
+
+//     req.host = host;
+//     next();
+//   } catch (error) {
+//     console.error("Error in requireHost middleware:", error);
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
+// // Verifica che l'utente sia admin
+// const requireAdmin = async (req, res, next) => {
+//   try {
+//     if (req.user.role !== "admin") {
+//       return res.status(403).json({
+//         error: "Accesso negato. Richiesti privilegi admin.",
+//       });
+//     }
+//     next();
+//   } catch (error) {
+//     console.error("Error in requireAdmin middleware:", error);
+//     res.status(500).json({ error: error.message });
+//   }
+// };
+
+// module.exports = {
+//   authenticate,
+//   verifyToken,
+//   verifyAdmin,
+//   cloudinaryMiddleware,
+//   requireHost,
+//   requireAdmin,
+// };
 
 // const jwt = require("jsonwebtoken");
 // const cloudinary = require("../utils/cloudinary/cloudinary.js");
@@ -585,3 +641,284 @@ module.exports = {
 //   extractToken,
 //   createError,
 // };
+
+const jwt = require("jsonwebtoken");
+const errorHandler = require("../utils/error.js");
+const cloudinary = require("../utils/cloudinary/cloudinary.js");
+const Host = require("../models/host.model.js");
+const User = require("../models/user.model.js");
+
+// ==================== MIDDLEWARE BASE DI AUTENTICAZIONE ====================
+
+/**
+ * Middleware principale per autenticazione JWT
+ * Verifica il token e carica l'utente completo dal database
+ * Supporta token da: Authorization header o cookie
+ */
+const authenticate = async (req, res, next) => {
+  try {
+    // Estrai token da header o cookie
+    const token =
+      req.cookies?.access_token ||
+      req.headers.authorization?.replace("Bearer ", "");
+
+    console.log("🔑 Token ricevuto:", token ? "presente" : "mancante");
+
+    if (!token) {
+      return res.status(401).json({
+        error: "Token di autenticazione mancante",
+      });
+    }
+
+    // Verifica il token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    console.log("✅ Token decodificato:", decoded);
+
+    // Carica l'utente completo dal database
+    // Supporta sia 'id' che '_id' nel token
+    const userId = decoded._id || decoded.id;
+    const user = await User.findById(userId);
+
+    console.log("👤 Utente trovato:", user ? user.email : "NESSUNO");
+
+    if (!user) {
+      return res.status(401).json({
+        error: "Utente non trovato",
+        debug: {
+          decodedId: decoded._id,
+          message: "L'ID nel token non corrisponde a nessun utente",
+        },
+      });
+    }
+
+    // Attacca l'utente alla request
+    req.user = user;
+    next();
+  } catch (error) {
+    console.error("❌ Errore autenticazione:", error.message);
+
+    if (error.name === "JsonWebTokenError") {
+      return res.status(401).json({ error: "Token non valido" });
+    }
+    if (error.name === "TokenExpiredError") {
+      return res.status(401).json({ error: "Token scaduto" });
+    }
+    res.status(401).json({ error: "Non autorizzato" });
+  }
+};
+
+// ==================== MIDDLEWARE DI AUTORIZZAZIONE PER RUOLO ====================
+
+/**
+ * Verifica che l'utente autenticato sia un user normale
+ * Utile per rotte accessibili solo a utenti non-admin/non-host
+ */
+const requireUser = (req, res, next) => {
+  try {
+    const role = req.user?.role;
+
+    if (!role) {
+      return res.status(403).json({
+        error: "Accesso negato. Informazioni utente mancanti.",
+      });
+    }
+
+    // Permetti accesso a user, host e admin (tutti sono user alla base)
+    // Se vuoi limitare SOLO agli user normali, decommenta la riga sotto:
+    // if (role !== "user") {
+    //   return res.status(403).json({
+    //     error: "Accesso negato. Riservato agli utenti standard.",
+    //   });
+    // }
+
+    next();
+  } catch (error) {
+    console.error("Error in requireUser middleware:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Verifica che l'utente sia un admin
+ */
+const requireAdmin = (req, res, next) => {
+  try {
+    const role = req.user?.role;
+
+    if (!role || role !== "admin") {
+      return res.status(403).json({
+        error: "Accesso negato. Richiesti privilegi admin.",
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error("Error in requireAdmin middleware:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Verifica che l'utente sia un host verificato e attivo
+ */
+const requireHost = async (req, res, next) => {
+  try {
+    // Cerca il profilo host collegato all'utente
+    const host = await Host.findOne({ user: req.user._id });
+
+    if (!host) {
+      return res.status(403).json({
+        error: "Accesso negato. Devi essere registrato come host.",
+      });
+    }
+
+    if (host.status !== "active") {
+      return res.status(403).json({
+        error: `Account host non attivo. Status: ${host.status}`,
+      });
+    }
+
+    // Attacca il profilo host alla request
+    req.host = host;
+    next();
+  } catch (error) {
+    console.error("Error in requireHost middleware:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Verifica che l'utente sia ADMIN o HOST
+ * Utile per funzionalità condivise tra questi due ruoli
+ */
+const requireAdminOrHost = async (req, res, next) => {
+  try {
+    const role = req.user?.role;
+
+    // Se è admin, passa direttamente
+    if (role === "admin") {
+      return next();
+    }
+
+    // Altrimenti verifica che sia un host attivo
+    const host = await Host.findOne({ user: req.user._id });
+
+    if (!host || host.status !== "active") {
+      return res.status(403).json({
+        error: "Accesso negato. Richiesti privilegi admin o host attivo.",
+      });
+    }
+
+    req.host = host;
+    next();
+  } catch (error) {
+    console.error("Error in requireAdminOrHost middleware:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// ==================== MIDDLEWARE DI VERIFICA PROPRIETÀ ====================
+
+/**
+ * Verifica che l'utente autenticato sia il proprietario della risorsa
+ * Controlla che req.user._id corrisponda al parametro userId
+ */
+const requireOwnership = (req, res, next) => {
+  try {
+    const userId = req.params.userId || req.params.id;
+    const authenticatedUserId = req.user._id.toString();
+
+    if (authenticatedUserId !== userId) {
+      return res.status(403).json({
+        error: "Accesso negato. Puoi modificare solo i tuoi dati.",
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error("Error in requireOwnership middleware:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+/**
+ * Verifica che l'utente sia il proprietario OPPURE un admin
+ * Utile per operazioni CRUD dove admin può gestire tutto
+ */
+const requireOwnershipOrAdmin = (req, res, next) => {
+  try {
+    const userId = req.params.userId || req.params.id;
+    const authenticatedUserId = req.user._id.toString();
+    const role = req.user?.role;
+
+    // Se è admin, passa
+    if (role === "admin") {
+      return next();
+    }
+
+    // Altrimenti controlla proprietà
+    if (authenticatedUserId !== userId) {
+      return res.status(403).json({
+        error: "Accesso negato. Puoi modificare solo i tuoi dati.",
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error("Error in requireOwnershipOrAdmin middleware:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// ==================== MIDDLEWARE CLOUDINARY ====================
+
+/**
+ * Gestisce upload di immagini su Cloudinary
+ */
+const cloudinaryMiddleware = async (req, res, next) => {
+  try {
+    if (req.body.profilePicture) {
+      const profilePictureResult = await cloudinary.uploader.upload(
+        req.body.profilePicture,
+        {
+          folder: "users",
+          allowed_formats: ["png", "jpg", "jpeg", "avif", "webp"],
+          transformation: [
+            { width: 500, height: 500, crop: "limit" },
+            { quality: "auto" },
+          ],
+        }
+      );
+
+      req.body.profilePicture = profilePictureResult.secure_url;
+    }
+
+    next();
+  } catch (err) {
+    console.error("Cloudinary upload error:", err);
+    return res.status(500).json({
+      error: "Errore nel caricamento dell'immagine profilo.",
+      details: err.message,
+    });
+  }
+};
+
+// ==================== EXPORTS ====================
+
+module.exports = {
+  // Autenticazione base
+  authenticate,
+
+  // Autorizzazione per ruolo
+  requireUser,
+  requireAdmin,
+  requireHost,
+  requireAdminOrHost,
+
+  // Verifica proprietà
+  requireOwnership,
+  requireOwnershipOrAdmin,
+
+  // Utilities
+  cloudinaryMiddleware,
+};

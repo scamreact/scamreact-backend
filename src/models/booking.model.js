@@ -1,4 +1,3 @@
-// ==================== MODEL: booking.model.js (esempio) ====================
 const mongoose = require("mongoose");
 
 const bookingSchema = new mongoose.Schema(

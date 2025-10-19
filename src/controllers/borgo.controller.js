@@ -13,31 +13,6 @@ const createBorgo = async (req, res) => {
   }
 };
 
-// Endpoint per cercare un borgo inserito filtrarlo per nome e id
-// const getBorgo = async (req, res) => {
-//   try {
-//     let borgo;
-
-//     // Se non trovato per ID o non è un ObjectId -> cerca per nome
-//     if (!borgo) {
-//       borgo = await Borgo.findOne({
-//         nome: { $regex: new RegExp(value, "i") }, // case-insensitive
-//       });
-//     }
-
-//     if (!borgo) {
-//       return res.status(404).json({ message: "Borgo non trovato" });
-//     }
-//     const { name } = req.params;
-//     const { value } = req.params;
-//     // const borgo = await Borgo.findOne(name);
-
-//     res.status(200).json(borgo);
-//   } catch (error) {
-//     res.status(500).send({ error: error.message });
-//   }
-// };
-
 const getBorgo = async (req, res) => {
   try {
     const { param } = req.params;

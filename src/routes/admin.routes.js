@@ -20,7 +20,7 @@ const {
   verifyPassword,
 } = require("../controllers/auth.controller.js");
 const {
-  verifyToken,
+  authenticate,
   cloudinaryMiddleware,
   verifyAdmin,
 } = require("../middleware/auth.middleware.js");
@@ -72,7 +72,7 @@ router.post(
 router.post("/verify-email/:token", (req, res, next) =>
   verifyEmail(req, res, next, Admin)
 );
-router.post("/verify-password", verifyToken, (req, res, next) =>
+router.post("/verify-password", authenticate, (req, res, next) =>
   verifyPassword(req, res, next, Admin)
 );
 router.post("/password-reset-request", (req, res, next) =>
@@ -84,7 +84,7 @@ router.post("/password-reset/:token", (req, res, next) =>
 
 router.put(
   "/update/:id",
-  verifyToken,
+  authenticate,
   cloudinaryMiddleware,
   [
     check("taxId")
@@ -114,9 +114,9 @@ router.put(
 // router.get("/users", verifyToken, verifyAdmin, getAllUsers); --> non funziona!
 router.get("/users", getAllUsers);
 router.get("/admins", getAllAdmins);
-router.delete("/delete/:id", verifyToken, deleteAdmin);
+router.delete("/delete/:id", authenticate, deleteAdmin);
 router.get("/:id", getAdminById);
-router.get("/profile/:id", verifyToken, getAdminProfile);
+router.get("/profile/:id", authenticate, getAdminProfile);
 
 module.exports = router;
 

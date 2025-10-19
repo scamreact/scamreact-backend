@@ -100,8 +100,6 @@ const hostSchema = new mongoose.Schema(
 );
 
 // Indici per performance
-hostSchema.index({ user: 1 });
-hostSchema.index({ vatNumber: 1 });
 hostSchema.index({ status: 1 });
 
 // Virtual per listings

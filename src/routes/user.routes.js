@@ -19,7 +19,7 @@ const {
 } = require("../controllers/auth.controller.js");
 const {
   cloudinaryMiddleware,
-  verifyToken,
+  authenticate,
 } = require("../middleware/auth.middleware.js");
 
 // ---------- User Routes ----------
@@ -65,7 +65,7 @@ router.post("/resend-verification", (req, res, next) =>
 );
 
 // Password verification
-router.post("/verify-password", verifyToken, (req, res, next) =>
+router.post("/verify-password", authenticate, (req, res, next) =>
   verifyPassword(req, res, next, User)
 );
 
@@ -78,7 +78,7 @@ router.post("/password-reset/:token", (req, res, next) =>
 
 router.put(
   "/update/:id",
-  verifyToken,
+  authenticate,
   cloudinaryMiddleware,
   [
     check("email")
@@ -96,8 +96,8 @@ router.put(
   updateUser
 );
 
-router.delete("/delete/:id", verifyToken, deleteUser);
-router.get("/:id", verifyToken, getUserProfile);
+router.delete("/delete/:id", authenticate, deleteUser);
+router.get("/:id", authenticate, getUserProfile);
 
 module.exports = router;
 
