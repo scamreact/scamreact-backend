@@ -35,23 +35,38 @@ const createInternetData = async (req, res) => {
 // Funzione di utilità per trovare borgo per id o slug
 const getInternetData = async (req, res) => {
   try {
+    console.log("req.params:", req.params);
     const { param } = req.params;
-    // Se è un ObjectId valido → cerca per id
+    let borgoId;
+
+    // Determina borgoId (da ObjectId o da nome)
     if (/^[0-9a-fA-F]{24}$/.test(param)) {
-      const internet = await Internet.findById(param);
-      if (!internet)
-        return res.status(404).json({ message: "Alloggio non trovato" });
-      return res.json(internet);
+      borgoId = param;
+    } else {
+      const borgo = await Borgo.findOne({
+        name: new RegExp(`^${param}$`, "i"),
+      });
+      if (!borgo) {
+        return res.status(404).json({ error: "Borgo non trovato" });
+      }
+      borgoId = borgo._id;
     }
 
-    // Altrimenti cerca per nome (case insensitive)
-    const internet = await Internet.findOne({
-      name: new RegExp(param, "i"),
-    });
-    if (!internet)
-      return res.status(404).json({ message: "Borgo non trovato" });
-    // Risposta OK
-    res.status(200).json(internet);
+    // Trova borgo e internet (usando findOne invece di find)
+    const [borgo, internet] = await Promise.all([
+      Borgo.findById(borgoId),
+      Internet.findOne({ borgo: borgoId }),
+    ]);
+
+    if (!borgo) {
+      return res.status(404).json({ error: "Borgo non trovato" });
+    }
+
+    // Log per debug
+    console.log("dati internet:", internet);
+
+    // Risposta OK - restituisce direttamente l'oggetto (o null se non esiste)
+    return res.status(200).json(internet);
   } catch (err) {
     console.error("getInternetData error", err);
     return res.status(500).json({ error: "Errore interno del server" });
