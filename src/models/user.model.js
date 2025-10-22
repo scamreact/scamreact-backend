@@ -22,6 +22,14 @@ const UserSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    job: {
+      type: String,
+      required: [true, "Your job is required"],
+    },
+    description: {
+      type: String,
+      required: [true, "Your description is required"],
+    },
     profilePicture: {
       type: String,
       default:

@@ -23,6 +23,8 @@ const createUser = async (req, res, next) => {
     const {
       name,
       email,
+      description,
+      job,
       phoneNumber,
       profilePicture,
       password,
@@ -65,6 +67,8 @@ const createUser = async (req, res, next) => {
     const newUser = await User.create({
       name,
       email,
+      description,
+      job,
       phoneNumber,
       profilePicture,
       password,
