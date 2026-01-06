@@ -8,7 +8,7 @@ const sendResetPasswordEmail = async (email, resetToken, Model) => {
       service: "gmail",
       auth: {
         user: process.env.GMAIL,
-        pass: process.env.GMAIL_PSW_APP,
+        pass: process.env.GMAIL_PSW,
       },
     });
 
