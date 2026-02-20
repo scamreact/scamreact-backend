@@ -7,6 +7,7 @@ const reportsRouter = require("./routes/reports");
 
 const app = express();
 const PORT = process.env.PORT;
+const PSW = process.env.PSW;
 
 // ── Middleware ──────────────────────────────────
 app.use(express.json({ limit: "20kb" })); // Limita payload
@@ -42,7 +43,9 @@ app.use((_req, res) => res.status(404).json({ error: "Rotta non trovata." }));
 // ── MongoDB + avvio server ───────────────────────
 async function startServer() {
   try {
-    await mongoose.connect(process.env.MONGO_URI);
+    await mongoose.connect(
+      `mongodb+srv://infoscamreact_db_user:${PSW}@scamreact.me91xzg.mongodb.net/?appName=scamreact`,
+    );
     console.log("✅ MongoDB connesso");
 
     app.listen(PORT, () => {
